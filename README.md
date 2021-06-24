@@ -1,12 +1,14 @@
 # Qiskit AQT Provider
 
-[![License](https://img.shields.io/github/license/Qiskit-Partners/qiskit-aqt-provider.svg?style=popout-square)](https://opensource.org/licenses/Apache-2.0)[![Build Status](https://img.shields.io/travis/com/Qiskit-Partners/qiskit-aqt-provider/master.svg?style=popout-square)](https://travis-ci.com/qiskit-community/qiskit-aqt-provider)[![](https://img.shields.io/github/release/Qiskit-Partners/qiskit-aqt-provider.svg?style=popout-square)](https://github.com/qiskit-community/qiskit-aqt-provider/releases)[![](https://img.shields.io/pypi/dm/qiskit-aqt-provider.svg?style=popout-square)](https://pypi.org/project/qiskit-aqt-provider/)
+[![License](https://img.shields.io/github/license/Qiskit-Partners/qiskit-aqt-provider.svg?style=popout-square)](https://opensource.org/licenses/Apache-2.0)
+[![Build Status](https://img.shields.io/github/workflow/status/Qiskit-Partners/qiskit-aqt-provider/Tests/master?style=popout-square)](https://github.com/Qiskit-Partners/qiskit-aqt-provider/actions/workflows/main.yml)
+[![](https://img.shields.io/github/release/Qiskit-Partners/qiskit-aqt-provider.svg?style=popout-square)](https://github.com/Qiskit-Partners/qiskit-aqt-provider/releases)
 
 **Qiskit** is an open-source SDK for working with quantum computers at the level of circuits, algorithms, and application modules.
 
 
-This project contains a provider that allows access to **[AQT]** ion-trap quantum
-system.
+This project contains a provider that allows access to the **[AQT ion-trap quantum](https://www.aqt.eu)**
+systems and simulators.
 
 ## Installation
 
@@ -23,40 +25,55 @@ will always install the  latest (and well-tested) version.
 
 Once the package is installed, you can use it to access the provider from qiskit.
 
-An access token can be obtained at [www.aqt.eu](www.aqt.eu).
+### Configure your AQT credentials
 
-### Use your AQT credentials
+1. Create an AQT accout or log into your existing account by visiting the
+   [AQT Portal login page](https://gateway-portal.aqt.eu/).
+2. Copy the your access token from your [AQT Portal account page](https://gateway-portal.aqt.eu/).
+3. Paste your token from step 2, here called `MY_ACCESS_TOKEN`, into a python session and run:
 
-You can initialize an AQT provider using your token locally with:
+    ```python
+    from qiskit_aqt_provider import AQTProvider
+    aqt = AQTProvider('MY_ACCESS_TOKEN')
+    ```
 
-```python
-from qiskit_aqt_provider import AQTProvider
-aqt = AQTProvider('MY_TOKEN')
-```
-
-Where `MY_TOKEN` is your access token for the AQT device. Then you can access
-the backends from that provider:
+Then you can access the the list of available AQT backends:
 
 ```python
 print(aqt.backends())
+```
+
+### Submitting a circuit
+
+Select one of the available backends. For example the AQT simulator:
+
+```python
 backend = aqt.backends.aqt_qasm_simulator
 ```
 
-You can then use that backend like you would use any other qiskit backend. For
-example, running a bell state:
+
+The selected backend can then be used like any other qiskit backend. For
+example, to construct a bell state:
 
 ```python
 from qiskit import QuantumCircuit, transpile
+
 qc = QuantumCircuit(2, 2)
 qc.h(0)
 qc.cx(0, 1)
 qc.measure([0,1], [0,1])
+
 trans_qc = transpile(qc, backend)
 job = backend.run(trans_qc)
 print(job.get_counts())
 ```
 
-For running the quantum circuit on the ion-trap quantum device you need to use `aqt_innsbruck` as backend, which needs a different access token.
+## Access to the ion trap quantum computer
+
+For running the quantum circuit on the [ion-trap quantum devices](https://www.aqt.eu/qc-systems/)
+you need to use `aqt_innsbruck` as backend, which is currently only available for partners of AQT.
+To inquire about access to the quantum devices, please [contact AQT](https://www.aqt.eu/contact/)
+directly.
 
 ## License
 

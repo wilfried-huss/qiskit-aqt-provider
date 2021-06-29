@@ -1,5 +1,7 @@
 # Qiskit AQT Provider
 
+![AQT Logo](./docs/images/Logo-AQT.png)
+
 [![License](https://img.shields.io/github/license/Qiskit-Partners/qiskit-aqt-provider.svg?style=popout-square)](https://opensource.org/licenses/Apache-2.0)
 [![Build Status](https://img.shields.io/github/workflow/status/Qiskit-Partners/qiskit-aqt-provider/Tests/master?style=popout-square)](https://github.com/Qiskit-Partners/qiskit-aqt-provider/actions/workflows/main.yml)
 [![](https://img.shields.io/github/release/Qiskit-Partners/qiskit-aqt-provider.svg?style=popout-square)](https://github.com/Qiskit-Partners/qiskit-aqt-provider/releases)
@@ -29,7 +31,7 @@ Once the package is installed, you can use it to access the provider from qiskit
 
 1. Create an AQT accout or log into your existing account by visiting the
    [AQT Portal login page](https://gateway-portal.aqt.eu/).
-2. Copy the your access token from your [AQT Portal account page](https://gateway-portal.aqt.eu/).
+2. Copy your access token from your [AQT Portal account page](https://gateway-portal.aqt.eu/).
 3. Paste your token from step 2, here called `MY_ACCESS_TOKEN`, into a python session and run:
 
     ```python

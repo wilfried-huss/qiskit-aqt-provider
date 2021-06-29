@@ -221,7 +221,7 @@ tox -epy37 -- -n test.test_examples.TestPythonExamples.test_all_examples
 
 To enforce a consistent code style in the project we use
 [Pylint](https://www.pylint.org) and
-[pycodesytle](https://pycodestyle.readthedocs.io/en/latest/)
+[pycodestyle](https://pycodestyle.readthedocs.io/en/latest/)
 to verify that code contributions conform respect the projects
 style guide. To verify that your changes conform to the style
 guide you can run: `tox -elint`

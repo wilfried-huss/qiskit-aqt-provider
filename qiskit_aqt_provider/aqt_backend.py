@@ -31,7 +31,7 @@ from . import circuit_to_aqt
 MICROSECONDS = "µs"
 
 
-class AqtDevice(Backend):
+class AQTDevice(Backend):
     def __init__(self, provider, configuration, properties):
         self.url = configuration['url']
         self._properties = properties
@@ -93,7 +93,7 @@ class AqtDevice(Backend):
         return BackendProperties.from_dict({**self._properties, **config})
 
 
-class AQTSimulator(AqtDevice):
+class AQTSimulator(AQTDevice):
 
     def __init__(self, provider):
         configuration = {
@@ -133,7 +133,7 @@ def fully_connected_coupling_map(n_ions: int) -> List[List[int]]:
     return coupling_map
 
 
-class AQTSimulatorNoise1(AqtDevice):
+class AQTSimulatorNoise1(AQTDevice):
 
     def __init__(self, provider):
         n_qubits = 11
@@ -214,7 +214,7 @@ class AQTSimulatorNoise1(AqtDevice):
             properties=properties)
 
 
-class AQTDeviceLinears(AqtDevice):
+class AQTDeviceLinears(AQTDevice):
 
     def __init__(self, provider):
         configuration = {
@@ -246,7 +246,7 @@ class AQTDeviceLinears(AqtDevice):
             properties=None)
 
 
-class AQTDeviceIbex(AqtDevice):
+class AQTDeviceIbex(AQTDevice):
 
     def __init__(self, provider):
         configuration = {

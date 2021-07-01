@@ -168,8 +168,6 @@ class AQTSimulatorNoise1(AqtDevice):
 
         # TODO: provide correct values
         properties = {
-            #"backend_name": self.name(),
-            #"backend_version": self.configuration().backend_version,
             "last_update_date": _DATE,
             "qubits": [
                 [

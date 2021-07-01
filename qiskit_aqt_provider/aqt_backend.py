@@ -30,14 +30,76 @@ from . import circuit_to_aqt
 
 MICROSECONDS = "µs"
 
-class AQTSimulator(Backend):
+
+class AqtDevice(Backend):
+    def __init__(self, provider, configuration, properties):
+        self.url = configuration['url']
+        self._properties = properties
+        super().__init__(
+            configuration=BackendConfiguration.from_dict(configuration),
+            provider=provider)
+
+    @classmethod
+    def _default_options(cls):
+        return Options(shots=100)
+
+    @deprecate_arguments({'qobj': 'circuit'})
+    def run(self, circuit, **kwargs):
+        if isinstance(circuit, qobj_mod.QasmQobj):
+            warnings.warn("Passing in a QASMQobj object to run() is "
+                          "deprecated and will be removed in a future "
+                          "release", DeprecationWarning)
+            if circuit.config.shots > self.configuration().max_shots:
+                raise ValueError('Number of shots is larger than maximum '
+                                 'number of shots')
+            aqt_json = qobj_to_aqt.qobj_to_aqt(
+                circuit, self._provider.access_token)[0]
+        elif isinstance(circuit, qobj_mod.PulseQobj):
+            raise QiskitError("Pulse jobs are not accepted")
+        else:
+            for kwarg in kwargs:
+                if kwarg != 'shots':
+                    warnings.warn(
+                        "Option %s is not used by this backend" % kwarg,
+                        UserWarning, stacklevel=2)
+            out_shots = kwargs.get('shots', self.options.shots)
+            if out_shots > self.configuration().max_shots:
+                raise ValueError('Number of shots is larger than maximum '
+                                 'number of shots')
+            aqt_json = circuit_to_aqt.circuit_to_aqt(
+                circuit, self._provider.access_token, shots=out_shots)[0]
+        header = {
+            "Ocp-Apim-Subscription-Key": self._provider.access_token,
+            "SDK": "qiskit"
+        }
+        res = requests.put(self.url, data=aqt_json, headers=header)
+        res.raise_for_status()
+        response = res.json()
+        if 'id' not in response:
+            raise Exception
+        job = aqt_job.AQTJob(self, response['id'], qobj=circuit)
+        return job
+
+    def properties(self):
+        """Return backend properties"""
+        if self._properties is None:
+            return None
+
+        config = {
+            "backend_name": self.name(),
+            "backend_version": self.configuration().backend_version,
+        }
+
+        return BackendProperties.from_dict({**self._properties, **config})
+
+
+class AQTSimulator(AqtDevice):
 
     def __init__(self, provider):
-        self.url = "https://gateway.aqt.eu/marmot/sim/"
         configuration = {
             'backend_name': 'aqt_qasm_simulator',
             'backend_version': '0.0.1',
-            'url': self.url,
+            'url': "https://gateway.aqt.eu/marmot/sim/",
             'simulator': True,
             'local': False,
             'coupling_map': None,
@@ -58,49 +120,9 @@ class AQTSimulator(Backend):
             ]
         }
         super().__init__(
-            configuration=BackendConfiguration.from_dict(configuration),
-            provider=provider)
-
-    @classmethod
-    def _default_options(cls):
-        return Options(shots=100)
-
-    @deprecate_arguments({'qobj': 'circuit'})
-    def run(self, circuit, **kwargs):
-        if isinstance(circuit, qobj_mod.QasmQobj):
-            warnings.warn("Passing in a QASMQobj object to run() is "
-                          "deprecated and will be removed in a future "
-                          "release", DeprecationWarning)
-            if circuit.config.shots > self.configuration().max_shots:
-                raise ValueError('Number of shots is larger than maximum '
-                                 'number of shots')
-            aqt_json = qobj_to_aqt.qobj_to_aqt(
-                circuit, self._provider.access_token)[0]
-        elif isinstance(circuit, qobj_mod.PulseQobj):
-            raise QiskitError("Pulse jobs are not accepted")
-        else:
-            for kwarg in kwargs:
-                if kwarg != 'shots':
-                    warnings.warn(
-                        "Option %s is not used by this backend" % kwarg,
-                        UserWarning, stacklevel=2)
-            out_shots = kwargs.get('shots', self.options.shots)
-            if out_shots > self.configuration().max_shots:
-                raise ValueError('Number of shots is larger than maximum '
-                                 'number of shots')
-            aqt_json = circuit_to_aqt.circuit_to_aqt(
-                circuit, self._provider.access_token, shots=out_shots)[0]
-        header = {
-            "Ocp-Apim-Subscription-Key": self._provider.access_token,
-            "SDK": "qiskit"
-        }
-        res = requests.put(self.url, data=aqt_json, headers=header)
-        res.raise_for_status()
-        response = res.json()
-        if 'id' not in response:
-            raise Exception
-        job = aqt_job.AQTJob(self, response['id'], qobj=circuit)
-        return job
+            provider=provider,
+            configuration=configuration,
+            properties=None)
 
 
 def fully_connected_coupling_map(n_ions: int) -> List[List[int]]:
@@ -111,24 +133,22 @@ def fully_connected_coupling_map(n_ions: int) -> List[List[int]]:
     return coupling_map
 
 
-class AQTSimulatorNoise1(Backend):
-    _N_QUBITS: int = 11
-    _DATE: str = "2000-01-01 00:00:00Z"
-    url: str = "https://gateway.aqt.eu/marmot/sim/noise-model-1"
+class AQTSimulatorNoise1(AqtDevice):
 
     def __init__(self, provider):
+        n_qubits = 11
         configuration = {
             'backend_name': 'aqt_qasm_simulator_noise_1',
             'backend_version': '0.0.1',
-            'url': self.url,
+            'url': "https://gateway.aqt.eu/marmot/sim/noise-model-1",
             'simulator': True,
             'local': False,
-            'coupling_map': fully_connected_coupling_map(self._N_QUBITS),
+            'coupling_map': fully_connected_coupling_map(n_qubits),
             'description': 'AQT trapped-ion device simulator '
                            'with noise model 1',
             'basis_gates': ['rx', 'ry', 'rxx'],
             'memory': False,
-            'n_qubits': self._N_QUBITS,
+            'n_qubits': n_qubits,
             'conditional': False,
             'max_shots': 200,
             'max_experiments': 1,
@@ -141,37 +161,33 @@ class AQTSimulatorNoise1(Backend):
                 }
             ]
         }
-        super().__init__(
-            configuration=BackendConfiguration.from_dict(configuration),
-            provider=provider)
 
-    def properties(self):
-        """Return backend properties"""
         coupling_map: List[List[int]] = self.configuration().coupling_map
         unique_qubits: List[int] = list(set().union(*coupling_map))
+        _DATE: str = "2000-01-01 00:00:00Z"
 
         # TODO: provide correct values
         properties = {
-            "backend_name": self.name(),
-            "backend_version": self.configuration().backend_version,
-            "last_update_date": self._DATE,
+            #"backend_name": self.name(),
+            #"backend_version": self.configuration().backend_version,
+            "last_update_date": _DATE,
             "qubits": [
                 [
-                    {"date": self._DATE, "name": "T1", "unit": MICROSECONDS, "value": 0.0},
-                    {"date": self._DATE, "name": "T2", "unit": MICROSECONDS, "value": 0.0},
+                    {"date": _DATE, "name": "T1", "unit": MICROSECONDS, "value": 0.0},
+                    {"date": _DATE, "name": "T2", "unit": MICROSECONDS, "value": 0.0},
                     {
-                        "date": self._DATE,
+                        "date": _DATE,
                         "name": "frequency",
                         "unit": "GHz",
                         "value": 0.0,
                     },
                     {
-                        "date": self._DATE,
+                        "date": _DATE,
                         "name": "readout_error",
                         "unit": "",
                         "value": 0.0,
                     },
-                    {"date": self._DATE, "name": "operational", "unit": "", "value": 1},
+                    {"date": _DATE, "name": "operational", "unit": "", "value": 1},
                 ]
                 for _ in range(len(unique_qubits))
             ],
@@ -181,7 +197,7 @@ class AQTSimulatorNoise1(Backend):
                     "name": "CX" + str(pair[0]) + "_" + str(pair[1]),
                     "parameters": [
                         {
-                            "date": self._DATE,
+                            "date": _DATE,
                             "name": "gate_error",
                             "unit": "",
                             "value": 0.0,
@@ -194,58 +210,19 @@ class AQTSimulatorNoise1(Backend):
             "general": [],
         }
 
-        return BackendProperties.from_dict(properties)
-
-    @classmethod
-    def _default_options(cls):
-        return Options(shots=100)
-
-    @deprecate_arguments({'qobj': 'circuit'})
-    def run(self, circuit, **kwargs):
-        if isinstance(circuit, qobj_mod.QasmQobj):
-            warnings.warn("Passing in a QASMQobj object to run() is "
-                          "deprecated and will be removed in a future "
-                          "release", DeprecationWarning)
-            if circuit.config.shots > self.configuration().max_shots:
-                raise ValueError('Number of shots is larger than maximum '
-                                 'number of shots')
-            aqt_json = qobj_to_aqt.qobj_to_aqt(
-                circuit, self._provider.access_token)[0]
-        elif isinstance(circuit, qobj_mod.PulseQobj):
-            raise QiskitError("Pulse jobs are not accepted")
-        else:
-            for kwarg in kwargs:
-                if kwarg != 'shots':
-                    warnings.warn(
-                        "Option %s is not used by this backend" % kwarg,
-                        UserWarning, stacklevel=2)
-            out_shots = kwargs.get('shots', self.options.shots)
-            if out_shots > self.configuration().max_shots:
-                raise ValueError('Number of shots is larger than maximum '
-                                 'number of shots')
-            aqt_json = circuit_to_aqt.circuit_to_aqt(
-                circuit, self._provider.access_token, shots=out_shots)[0]
-        header = {
-            "Ocp-Apim-Subscription-Key": self._provider.access_token,
-            "SDK": "qiskit"
-        }
-        res = requests.put(self.url, data=aqt_json, headers=header)
-        res.raise_for_status()
-        response = res.json()
-        if 'id' not in response:
-            raise Exception
-        job = aqt_job.AQTJob(self, response['id'], qobj=circuit)
-        return job
+        super().__init__(
+            provider=provider,
+            configuration=configuration,
+            properties=properties)
 
 
-class AQTDevice(Backend):
+class AQTDeviceLinears(AqtDevice):
 
     def __init__(self, provider):
-        self.url = 'https://gateway.aqt.eu/marmot/lint'
         configuration = {
-            'backend_name': 'aqt_innsbruck',
+            'backend_name': 'aqt_linears',
             'backend_version': '0.0.1',
-            'url': self.url,
+            'url': 'https://gateway.aqt.eu/marmot/lint',
             'simulator': False,
             'local': False,
             'coupling_map': None,
@@ -266,59 +243,18 @@ class AQTDevice(Backend):
             ]
         }
         super().__init__(
-            configuration=BackendConfiguration.from_dict(configuration),
-            provider=provider)
-
-    @classmethod
-    def _default_options(cls):
-        return Options(shots=100)
-
-    @deprecate_arguments({'qobj': 'circuit'})
-    def run(self, circuit, **kwargs):
-        if isinstance(circuit, qobj_mod.QasmQobj):
-            warnings.warn("Passing in a QASMQobj object to run() is "
-                          "deprecated and will be removed in a future "
-                          "release", DeprecationWarning)
-            if circuit.config.shots > self.configuration().max_shots:
-                raise ValueError('Number of shots is larger than maximum '
-                                 'number of shots')
-            aqt_json = qobj_to_aqt.qobj_to_aqt(
-                circuit, self._provider.access_token)[0]
-        elif isinstance(circuit, qobj_mod.PulseQobj):
-            raise QiskitError("Pulse jobs are not accepted")
-        else:
-            for kwarg in kwargs:
-                if kwarg != 'shots':
-                    warnings.warn(
-                        "Option %s is not used by this backend" % kwarg,
-                        UserWarning, stacklevel=2)
-            out_shots = kwargs.get('shots', self.options.shots)
-            if out_shots > self.configuration().max_shots:
-                raise ValueError('Number of shots is larger than maximum '
-                                 'number of shots')
-            aqt_json = circuit_to_aqt.circuit_to_aqt(
-                circuit, self._provider.access_token, shots=out_shots)[0]
-        header = {
-            "Ocp-Apim-Subscription-Key": self._provider.access_token,
-            "SDK": "qiskit"
-        }
-        res = requests.put(self.url, data=aqt_json, headers=header)
-        res.raise_for_status()
-        response = res.json()
-        if 'id' not in response:
-            raise Exception
-        job = aqt_job.AQTJob(self, response['id'], qobj=circuit)
-        return job
+            provider=provider,
+            configuration=configuration,
+            properties=None)
 
 
-class AQTDeviceIbex(Backend):
+class AQTDeviceIbex(AqtDevice):
 
     def __init__(self, provider):
-        self.url = 'https://gateway.aqt.eu/marmot/Ibex'
         configuration = {
             'backend_name': 'aqt_ibex',
             'backend_version': '0.0.1',
-            'url': self.url,
+            'url': 'https://gateway.aqt.eu/marmot/Ibex',
             'simulator': False,
             'local': False,
             'coupling_map': None,
@@ -339,42 +275,7 @@ class AQTDeviceIbex(Backend):
             ]
         }
         super().__init__(
-            configuration=BackendConfiguration.from_dict(configuration),
-            provider=provider)
+            provider=provider,
+            configuration=configuration,
+            properties=None)
 
-    @classmethod
-    def _default_options(cls):
-        return Options(shots=100)
-
-    def run(self, qobj, **kwargs):
-        if isinstance(qobj, qobj_mod.QasmQobj):
-            warnings.warn("Passing in a QASMQobj object to run() is "
-                          "deprecated and will be removed in a future "
-                          "release", DeprecationWarning)
-            if qobj.config.shots > self.configuration().max_shots:
-                raise ValueError('Number of shots is larger than maximum '
-                                 'number of shots')
-            aqt_json = qobj_to_aqt.qobj_to_aqt(
-                qobj, self._provider.access_token)[0]
-        elif isinstance(qobj, qobj_mod.PulseQobj):
-            raise QiskitError("Pulse jobs are not accepted")
-        else:
-            for kwarg in kwargs:
-                if kwarg != 'shots':
-                    warnings.warn(
-                        "Option %s is not used by this backend" % kwarg,
-                        UserWarning, stacklevel=2)
-            out_shots = kwargs.get('shots', self.options.shots)
-            aqt_json = circuit_to_aqt.circuit_to_aqt(
-                qobj, self._provider.access_token, shots=out_shots)[0]
-        header = {
-            "Ocp-Apim-Subscription-Key": self._provider.access_token,
-            "SDK": "qiskit"
-        }
-        res = requests.put(self.url, data=aqt_json, headers=header)
-        res.raise_for_status()
-        response = res.json()
-        if 'id' not in response:
-            raise Exception
-        job = aqt_job.AQTJob(self, response['id'], qobj=qobj)
-        return job

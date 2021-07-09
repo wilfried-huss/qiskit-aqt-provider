@@ -191,8 +191,8 @@ class AQTSimulatorNoise1(AQTDevice):
             ],
             "gates": [
                 {
-                    "gate": "cx",
-                    "name": "CX" + str(pair[0]) + "_" + str(pair[1]),
+                    "gate": "rx",
+                    "name": "RX" + str(pair[0]) + "_" + str(pair[1]),
                     "parameters": [
                         {
                             "date": _DATE,
@@ -276,4 +276,3 @@ class AQTDeviceIbex(AQTDevice):
             provider=provider,
             configuration=configuration,
             properties=None)
-

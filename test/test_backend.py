@@ -11,18 +11,22 @@
 # copyright notice, and modified files need to carry a notice indicating
 # that they have been altered from the originals.
 
+import os
 import json
 from random import randint
-import unittest
-from unittest import mock
+
+from requests.models import HTTPError, Response
+
+from qiskit import QuantumCircuit, transpile
+from qiskit_aqt_provider import AQTProvider
 
 import pytest
 
-from qiskit import transpile, QuantumCircuit
-from qiskit.providers.exceptions import JobError
-from requests.models import Response
 
-from qiskit_aqt_provider import AQTProvider
+# To run the test using the AQT-simulator set the environment variable
+# ACCESS_TOKEN to a valid token for the AQT api.
+USE_MOCK_API = not bool(os.environ.get("ACCESS_TOKEN", False))
+ACCESS_TOKEN = os.environ.get("ACCESS_TOKEN", "VALID_MOCK_ACCESS_TOKEN")
 
 
 def demo_circuit():
@@ -56,28 +60,25 @@ def mock_api_factory(no_qubits, transpiled_circuit, samples):
     JOB_ID = f"job_{randint(1000, 2000)}"
 
     def mocked_api_response(*args, **kwargs):
-        response = Response()
-        response.status_code = 200
-
         url = args[0]
         assert url == 'https://gateway.aqt.eu/marmot/sim/'
+
+        status_code = 200
 
         payload = kwargs['data']
 
         # API Call with invalid token
         access_token = payload['access_token']
-        if access_token != "VALID_TOKEN":
+        if access_token != "VALID_MOCK_ACCESS_TOKEN":
+            status_code = 401
             invalid_token_response = {
                 'id': JOB_ID,
                 'status': 'error'
             }
 
             response_content = json.dumps(invalid_token_response)
-            response._content = str.encode(response_content)
-            return response
-
-        # API call to request the result
-        if 'id' in payload:
+        elif 'id' in payload:
+            # API call to request the result
             id = payload['id']
             access_token = payload['access_token']
             assert id == JOB_ID
@@ -91,66 +92,70 @@ def mock_api_factory(no_qubits, transpiled_circuit, samples):
             }
 
             response_content = json.dumps(fake_response)
-            response._content = str.encode(response_content)
-            return response
+        else:
+            # API call to submit a circuit
+            # circuit = json.loads(payload['data'])
+            # assert circuit == transpiled_circuit
 
-        # API call to submit a circuit
-        circuit = json.loads(payload['data'])
-        assert circuit == transpiled_circuit
+            repetitions = payload['repetitions']
+            assert repetitions == 100
+            # circuit = payload['data']
+            # assert circuit == TRANSPILED_TEST_CIRCUIT
+            assert no_qubits == payload['no_qubits']
 
-        repetitions = payload['repetitions']
-        assert repetitions == 100
-        # circuit = payload['data']
-        # assert circuit == TRANSPILED_TEST_CIRCUIT
-        assert no_qubits == payload['no_qubits']
+            queued_response = {
+                'id': JOB_ID,
+                'status': 'queued'
+            }
 
-        queued_response = {
-            'id': JOB_ID,
-            'status': 'queued'
-        }
+            response_content = json.dumps(queued_response)
 
-        response_content = json.dumps(queued_response)
-        response._content = str.encode(response_content)
+        response = Response()
+        response.status_code = status_code
+        response._content = str.encode(response_content)  # pylint: disable=protected-access
         return response
 
     return mocked_api_response
 
 
-class TestBackend(unittest.TestCase):
-
-    @mock.patch(
-        'qiskit_aqt_provider.aqt_backend.requests.put',
-        side_effect=mock_api_factory(
-            no_qubits=3,
-            transpiled_circuit=TRANSPILED_DEMO_CIRCUIT,
-            samples=50 * [0, 7]
+def test_backend(mocker):
+    if USE_MOCK_API:
+        mocker.patch(
+            'qiskit_aqt_provider.aqt_backend.requests.put',
+            side_effect=mock_api_factory(
+                no_qubits=3,
+                transpiled_circuit=TRANSPILED_DEMO_CIRCUIT,
+                samples=50 * [0, 7]
+            )
         )
-    )
-    def test_backend(self, mock_get):
-        aqt = AQTProvider("VALID_TOKEN")
-        backend = aqt.backends.aqt_qasm_simulator
 
-        qc = demo_circuit()
-        trans_qc = transpile(qc, backend)
+    aqt = AQTProvider(ACCESS_TOKEN)
+    backend = aqt.get_backend('aqt_qasm_simulator')
 
-        job = backend.run(trans_qc)
-        counts = job.get_counts()
-        assert counts == {'000': 50, '111': 50}
+    qc = demo_circuit()
+    trans_qc = transpile(qc, backend)
 
-    @mock.patch(
-        'qiskit_aqt_provider.aqt_backend.requests.put',
-        side_effect=mock_api_factory(
-            no_qubits=3,
-            transpiled_circuit=TRANSPILED_DEMO_CIRCUIT,
-            samples=50 * [0, 7])
-    )
-    def test_backend_invalid_token(self, mock_get):
-        aqt = AQTProvider("INVALID_TOKEN")
-        backend = aqt.backends.aqt_qasm_simulator
+    job = backend.run(trans_qc)
+    counts = job.get_counts()
+    assert counts['000'] + counts['111'] == 100
 
-        qc = demo_circuit()
-        trans_qc = transpile(qc, backend)
 
-        job = backend.run(trans_qc)
-        with pytest.raises(JobError):
-            job.get_counts()
+def test_backend_invalid_token(mocker):
+    if USE_MOCK_API:
+        mocker.patch(
+            'qiskit_aqt_provider.aqt_backend.requests.put',
+            side_effect=mock_api_factory(
+                no_qubits=3,
+                transpiled_circuit=TRANSPILED_DEMO_CIRCUIT,
+                samples=50 * [0, 7]
+            )
+        )
+
+    aqt = AQTProvider("INVALID_TOKEN")
+    backend = aqt.get_backend('aqt_qasm_simulator')
+
+    qc = demo_circuit()
+    trans_qc = transpile(qc, backend)
+
+    with pytest.raises(HTTPError):
+        backend.run(trans_qc)

@@ -20,6 +20,22 @@ from requests.models import Response
 
 from qiskit_aqt_provider import AQTProvider
 
+TRANSPILED_TEST_CIRCUIT = \
+    [
+        ["Y", 0.5, [0]],
+        ["X", 0.5, [0]],
+        ["X", 0.5, [0]],
+        ["Y", -0.5, [0]],
+        ["MS", -0.5, [0, 1]],
+        ["X", 0.5, [0]],
+        ["X", -0.5, [1]],
+        ["MS", -0.5, [0, 2]],
+        ["X", 0.5, [0]],
+        ["Y", 0.5, [0]],
+        ["X", -0.5, [2]]
+    ]
+
+
 # This method will be used by the mock to replace requests.put
 def mocked_api_response(*args, **kwargs):
 
@@ -32,7 +48,6 @@ def mocked_api_response(*args, **kwargs):
     assert url == 'https://gateway.aqt.eu/marmot/sim/'
 
     payload = kwargs['data']
-    headers = kwargs['headers']
 
     # API call to request the result
     if 'id' in payload:
@@ -41,20 +56,9 @@ def mocked_api_response(*args, **kwargs):
         fake_response = {
             'id': JOB_ID,
             'no_qubits': 2,
-            'received': '[["Y", 0.5, [0]]',
+            'received': TRANSPILED_TEST_CIRCUIT,
             'repetitions': 100,
-            'samples': [3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
-                        3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
-                        3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
-                        3, 3, 3, 3, 3, 3, 3, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
-                        3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 1, 3, 3, 3, 3, 3,
-                        3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
-                        3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
-                        3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
-                        3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
-                        3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
-                        3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
-                        3, 3],
+            'samples': 50 * [0, 7],
             'status': 'finished'
         }
 
@@ -63,17 +67,17 @@ def mocked_api_response(*args, **kwargs):
         return response
 
     # API call to submit a circuit
-
     #circuit = payload['data']
     #print(circuit)
-
 
     access_token = payload['access_token']
     if access_token == "VALID_TOKEN":
         repetitions = payload['repetitions']
         assert repetitions == 100
-        #no_qubits = payload['no_qubits']
-
+        #circuit = payload['data']
+        #assert circuit == TRANSPILED_TEST_CIRCUIT
+        no_qubits = payload['no_qubits']
+        assert no_qubits == 3
 
         queued_response = {
             'id': JOB_ID,
@@ -83,17 +87,16 @@ def mocked_api_response(*args, **kwargs):
         response_content = json.dumps(queued_response)
         response._content = str.encode(response_content)
         return response
-    else:
-        invalid_token_response = {
-            'id': JOB_ID,
-            'status': 'error'
-        }
 
-        response_content = json.dumps(invalid_token_response)
-        response._content = str.encode(response_content)
-        return response
+    # Invalid token
+    invalid_token_response = {
+        'id': JOB_ID,
+        'status': 'error'
+    }
 
-
+    response_content = json.dumps(invalid_token_response)
+    response._content = str.encode(response_content)
+    return response
 
 
 class TestBackend(unittest.TestCase):
@@ -103,16 +106,15 @@ class TestBackend(unittest.TestCase):
         aqt = AQTProvider("VALID_TOKEN")
         backend = aqt.backends.aqt_qasm_simulator
 
-        qc = QuantumCircuit(5, 4)
-        qc.x(4)
-        qc.h(range(5))
-        qc.barrier()
-        qc.cx([0, 1, 3], [4, 4, 4])
-        qc.barrier()
-        qc.h(range(4))
-        qc.measure(range(4), range(4))
+        qc = QuantumCircuit(3, 3)
+        qc.h(0)
+        qc.cx(0, 1)
+        qc.cx(0, 2)
+        qc.barrier(range(3))
+        qc.measure(range(3), range(3))
 
         trans_qc = transpile(qc, backend)
 
         job = backend.run(trans_qc)
-        print(job.get_counts())
+        counts = job.get_counts()
+        assert counts == {'000': 50, '111': 50}
